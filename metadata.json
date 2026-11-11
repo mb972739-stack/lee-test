@@ -1,0 +1,6 @@
+{
+  "name": "중학 열공 퀘스트 - 실전 모의고사 & 성장 오답노트",
+  "description": "중학생을 위한 타이머 기반 실전 모의고사, 자동 오답노트, 공부할수록 진화하는 캐릭터 육성 게임, 그리고 오답 기반 난이도 상승 AI 유사 문제 생성기",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
