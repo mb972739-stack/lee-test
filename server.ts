@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -63,12 +63,11 @@ app.post('/api/generate-similar-questions', async (req: Request, res: Response) 
               '① 3',
               '② 5',
               '③ 7',
-              '④ 9',
-              '⑤ 12'
+              '④ 9'
             ],
             correctAnswerIndex: 2,
-            explanation: `[풀이]\n주어진 조건식을 정리하면 부등식 2x - 3 ≤ 11이 성립합니다.\n2x ≤ 14 이므로 x ≤ 7 입니다.\n따라서 조건을 만족하는 자연수 x의 최댓값은 7입니다.`,
-            trapPoint: '등호 포함 여부(≤ 와 <)를 꼼꼼히 확인하지 않아 6 또는 8로 오답을 고르기 쉽습니다.',
+            explanation: `[풀이]\n주어진 조건식을 정리하면 부등식 2x - 3 ≤ 11이 성립합니다.\n2x ≤ 14 이므로 x ≤ 7 입니다.\n따라서 조건을 만족하는 자연수 x의 최댓값은 7(③번)입니다.`,
+            trapPoint: '등호 포함 여부(≤ 와 <)를 꼼꼼히 확인하지 않아 5 또는 9로 오답을 고르기 쉽습니다.',
             keyConcept: `${unit} 핵심 정리 및 조건 분기 사고력`,
             isGeneratedByAI: false,
           }
@@ -89,8 +88,8 @@ ${bookGuide}
 
 [요구사항]
 1. 반드시 실제 한국 중학교 수학 교육과정(2022/2015 개정)에 정확히 부합하는 정통 중학 수학 문제를 출제하세요.
-2. 5지선다 객관식(①~⑤)으로 보기를 제공하세요.
-3. 정답 인덱스(0~4)와 명쾌하고 친절한 풀이 과정(explanation), 학생들이 자주 빠지는 함정(trapPoint), 핵심 개념 공식(keyConcept)을 포함하세요.
+2. 4지선다 객관식(①~④)으로 반드시 정확히 4개의 보기를 제공하세요.
+3. 정답 인덱스(0~3)와 명쾌하고 친절한 풀이 과정(explanation), 학생들이 자주 빠지는 함정(trapPoint), 핵심 개념 공식(keyConcept)을 포함하세요.
 4. 난이도가 ${bookType === 'blacklabel' ? '블랙라벨 심화' : '100발100중 실전'}인 만큼, 계산 실수 유발점이 아닌 논리적 풀이 구조를 훌륭히 담아주세요.`;
 
     const response = await ai.models.generateContent({
@@ -109,9 +108,9 @@ ${bookGuide}
               options: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
-                description: '5지선다형 객관식 보기 5개 (예: ["① 4", "② 6", "③ 8", "④ 10", "⑤ 12"])'
+                description: '4지선다형 객관식 보기 4개 (예: ["① 4", "② 6", "③ 8", "④ 10"])'
               },
-              correctAnswerIndex: { type: Type.INTEGER, description: '정답 보기 번호 인덱스 (0, 1, 2, 3, 4 중 하나)' },
+              correctAnswerIndex: { type: Type.INTEGER, description: '정답 보기 번호 인덱스 (0, 1, 2, 3 중 하나)' },
               explanation: { type: Type.STRING, description: '단계별 정밀 풀이 해설' },
               trapPoint: { type: Type.STRING, description: '학생들이 흔히 착각하는 오답 함정' },
               keyConcept: { type: Type.STRING, description: '핵심 수학 공식 또는 정리' },
@@ -235,7 +234,7 @@ async function startServer() {
     });
   }
 
-  app.listen(port, () => {
+  app.listen(port, '0.0.0.0', () => {
     console.log(`StudyQuest Full-Stack Server running on port ${port}`);
   });
 }

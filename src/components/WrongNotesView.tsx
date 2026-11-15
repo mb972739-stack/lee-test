@@ -228,11 +228,24 @@ export const WrongNotesView: React.FC = () => {
                     <span className="w-7 h-7 rounded-lg bg-amber-500 text-white font-extrabold flex items-center justify-center text-xs">
                       #{index + 1}
                     </span>
+                    {q.stepLevel && (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                        q.stepLevel === 1 ? 'bg-sky-50 text-sky-700 border-sky-200' :
+                        q.stepLevel === 2 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        q.stepLevel === 3 ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                        'bg-purple-50 text-purple-800 border-purple-200 font-extrabold'
+                      }`}>
+                        Step {q.stepLevel}
+                      </span>
+                    )}
                     <span className="text-xs font-bold text-indigo-700 px-2.5 py-0.5 rounded-md bg-indigo-50">
                       {note.grade} {note.semester} {note.examType}
                     </span>
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
                       {note.subject} · {q.unit}
+                    </span>
+                    <span className="text-[11px] font-extrabold px-1.5 py-0.5 rounded bg-slate-800 text-white">
+                      {q.scoreWeight || 5}점
                     </span>
                     <span
                       className={`text-xs font-semibold px-2 py-0.5 rounded-md ${

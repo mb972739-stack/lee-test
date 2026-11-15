@@ -1,5 +1,7 @@
 import { Question, Grade, Semester, ExamType, Subject, BookType, TextbookPublisher } from '../types';
 import { INITIAL_QUESTION_BANK } from '../data/questionBank';
+import { generateTieredQuestion, ensure4Options } from './tieredQuestionBank';
+export { ensure4Options };
 
 // 대한민국 중학교 정규 교육과정 기준 확장 문항 은행
 const EXTENDED_QUESTIONS: Question[] = [
@@ -674,470 +676,8 @@ export const EXAM_MODES_CONFIG: Record<number, ExamModeSpec> = {
   },
 };
 
-// 단계별(1~4단계) 난이도 맞춤형 고품질 문항 생성기
-function generateTieredQuestion(params: {
-  grade: Grade;
-  semester: Semester;
-  examType: ExamType;
-  subject: Subject;
-  unit: string;
-  publisher?: TextbookPublisher;
-  stepLevel: 1 | 2 | 3 | 4;
-  variantIndex: number;
-  bookType?: BookType;
-}): Question {
-  const { grade, semester, examType, subject, unit, publisher, stepLevel, variantIndex, bookType = '100bal100jung' } = params;
-  const normUnit = normalizeText(unit);
-  const pubTag = publisher && publisher !== '공통/표준' ? `[${publisher}] ` : '';
-
-  let diffLevel: DifficultyLevel = '기본';
-  let bookSrc: '100bal100jung' | 'blacklabel' = '100bal100jung';
-  let scoreWeight = 4;
-  let stepTag = '[Step 1 교과서 기본]';
-
-  if (stepLevel === 1) {
-    diffLevel = '기본';
-    bookSrc = '100bal100jung';
-    scoreWeight = 4;
-    stepTag = '[Step 1 교과서 기본]';
-  } else if (stepLevel === 2) {
-    diffLevel = '100발100중 실전';
-    bookSrc = '100bal100jung';
-    scoreWeight = 5;
-    stepTag = '[Step 2 100발100중 빈출]';
-  } else if (stepLevel === 3) {
-    diffLevel = '블랙라벨 Step2';
-    bookSrc = bookType === 'blacklabel' ? 'blacklabel' : '100bal100jung';
-    scoreWeight = 5;
-    stepTag = '[Step 3 실전 고난도 응용]';
-  } else {
-    diffLevel = '블랙라벨 Step3 킬러';
-    bookSrc = 'blacklabel';
-    scoreWeight = 6;
-    stepTag = '[Step 4 블랙라벨 1등급 킬러]';
-  }
-
-  // 수학 과목의 단원별 단계별 문제 데이터
-  if (subject === '수학') {
-    if (normUnit.includes('소인수분해') || normUnit.includes('약수')) {
-      if (stepLevel === 1) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}소수와 합성수의 판별`,
-          questionText: '다음 중 소수(prime number)에 대한 설명으로 옳은 것만을 보기에서 있는 대로 고른 것은?\n\n[보기]\nㄱ. 2는 가장 작은 소수이며 유일한 짝수인 소수이다.\nㄴ. 모든 소수의 약수는 2개이다.\nㄷ. 두 소수의 곱은 항상 홀수이다.',
-          options: ['① ㄱ', '② ㄱ, ㄴ', '③ ㄴ, ㄷ', '④ ㄱ, ㄷ', '⑤ ㄱ, ㄴ, ㄷ'],
-          correctAnswerIndex: 1,
-          explanation: 'ㄱ: 2는 가장 작은 소수이자 유일한 짝수입니다. (참)\nㄴ: 소수의 정의상 1과 자기 자신만을 약수로 가지므로 약수의 개수는 정확히 2개입니다. (참)\nㄷ: 2와 3은 소수이지만 그 곱인 2×3=6은 짝수이므로 거짓입니다.',
-          trapPoint: '2가 짝수 소수이므로 ‘두 소수의 곱이 항상 홀수’라는 진술은 반례(2×3=6)로 인해 거짓입니다.',
-          coreFormula: '소수의 정의: 1보다 큰 자연수 중 1과 자기 자신만을 약수로 갖는 수 (약수 2개)',
-        };
-      } else if (stepLevel === 2) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}소인수분해와 약수의 개수 계산`,
-          questionText: '자연수 180 = 2² × 3² × 5 의 모든 양의 약수의 개수로 알맞은 것은?',
-          options: ['① 12개', '② 15개', '③ 18개', '④ 20개', '⑤ 24개'],
-          correctAnswerIndex: 2,
-          explanation: '자연수 N = aᵖ × bᵍ × cʳ 일 때 약수의 개수는 (p + 1)(q + 1)(r + 1) 입니다.\n180의 소인수 지수는 2, 2, 1 이므로\n약수의 개수 = (2 + 1) × (2 + 1) × (1 + 1) = 3 × 3 × 2 = 18(개) 입니다.',
-          trapPoint: '지수에 1을 더하지 않고 지수끼리 곱하는 실수를 주의해야 합니다.',
-          coreFormula: '약수의 개수 = (지수 + 1)의 곱',
-        };
-      } else if (stepLevel === 3) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}최대공약수와 최소공배수의 실생활 활용`,
-          questionText: '가로의 길이가 120cm, 세로의 길이가 90cm인 직사각형 모양의 벽면에 가능한 한 큰 정사각형 모양의 타일을 빈틈없이 붙이려고 한다. 이때 필요한 타일의 최소 개수는?',
-          options: ['① 6개', '② 8개', '③ 12개', '④ 15개', '⑤ 20개'],
-          correctAnswerIndex: 2,
-          explanation: '타일의 한 변의 길이는 120과 90의 최대공약수여야 합니다.\n120 = 2³ × 3 × 5, 90 = 2 × 3² × 5 이므로\n최대공약수 = 2 × 3 × 5 = 30(cm) 입니다.\n\n가로에 필요한 타일 수 = 120 / 30 = 4(개)\n세로에 필요한 타일 수 = 90 / 30 = 3(개)\n따라서 총 필요한 타일의 개수는 4 × 3 = 12(개) 입니다.',
-          trapPoint: '타일의 한 변의 길이(30cm)를 묻는 것인지, 타일의 총 개수(12개)를 묻는 것인지 정확히 확인해야 합니다.',
-          coreFormula: '직사각형 빈틈없이 채우기: 한 변의 길이 = GCD(가로, 세로), 총 개수 = (가로/GCD) × (세로/GCD)',
-        };
-      } else {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}제곱수가 되도록 하는 자연수 곱하기 킬러`,
-          questionText: '자연수 108에 가장 작은 자연수 a를 곱하여 어떤 자연수 b의 제곱이 되게 하려고 한다. 이때 a + b의 값은?',
-          options: ['① 15', '② 18', '③ 21', '④ 24', '⑤ 27'],
-          correctAnswerIndex: 2,
-          explanation: '108을 소인수분해하면 108 = 2² × 3³ 입니다.\n어떤 자연수의 제곱이 되려면 모든 소인수의 지수가 짝수여야 합니다.\n지수가 홀수인 소인수는 3³이므로, 가장 작은 자연수 a = 3 입니다.\n\n이때 108 × 3 = 2² × 3⁴ = (2 × 3²)² = 18² = b² 이므로 b = 18 입니다.\n따라서 a + b = 3 + 18 = 21 입니다.',
-          trapPoint: 'a만 구하고 끝내지 않고 b(제곱의 밑)까지 계산하여 합을 구해야 합니다.',
-          coreFormula: '제곱수가 될 조건: 소인수분해 시 모든 소인수의 지수가 짝수',
-        };
-      }
-    }
-
-    if (normUnit.includes('순환소수') || normUnit.includes('유리수와순환소수')) {
-      if (stepLevel === 1) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}유한소수로 나타낼 수 있는 분수의 판별`,
-          questionText: '다음 분수 중 유한소수로 나타낼 수 있는 것은?',
-          options: ['① 3/14', '② 7/30', '③ 9/75', '④ 5/12', '⑤ 11/45'],
-          correctAnswerIndex: 2,
-          explanation: '기약분수로 나타내었을 때 분모의 소인수가 2 또는 5뿐이어야 유한소수입니다.\n③ 9/75 = 3/25 = 3 / 5² 이므로 분모의 소인수가 5뿐이라 유한소수입니다.\n① 14=2×7 (7 있음), ② 30=2×3×5 (3 있음), ④ 12=2²×3 (3 있음), ⑤ 45=3²×5 (3 있음)',
-          trapPoint: '약분하여 기약분수로 먼저 고치지 않고 분모를 바로 소인수분해하면 오답이 발생합니다.',
-          coreFormula: '유한소수 조건: 기약분수의 분모의 소인수가 2 또는 5뿐',
-        };
-      } else if (stepLevel === 2) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}순환소수의 기약분수 표현`,
-          questionText: '순환소수 0.23̇ 을 기약분수로 나타내었을 때, 분모와 분자의 차(분모 - 분자)는?',
-          options: ['① 23', '② 27', '③ 30', '④ 69', '⑤ 71'],
-          correctAnswerIndex: 0,
-          explanation: '순환소수 0.23̇ = (23 - 2) / 90 = 21 / 90 = 7 / 30 (기약분수)\n분모 30 - 분자 7 = 23 입니다.',
-          trapPoint: '약분하지 않고 90 - 21 = 69로 답하지 않도록 기약분수 조건을 반드시 지켜야 합니다.',
-          coreFormula: '순환소수 분수 변환: 0.aḃ = (ab - a) / 90',
-        };
-      } else if (stepLevel === 3) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}순환마디 규칙성과 소수점 아래 n번째 자리 숫자`,
-          questionText: '분수 5/7 를 소수로 나타낼 때, 소수점 아래 50번째 자리의 숫자는?',
-          options: ['① 7', '② 1', '③ 4', '④ 2', '⑤ 8'],
-          correctAnswerIndex: 1,
-          explanation: '5/7 = 0.7̇14285̇ (순환마디: 7, 1, 4, 2, 8, 5 총 6개)\n50 = 6 × 8 + 2 이므로 나머지가 2입니다.\n순환마디의 2번째 숫자는 1입니다.',
-          trapPoint: '나머지가 0이면 순환마디의 마지막 숫자가 됨을 기억해야 합니다.',
-          coreFormula: '소수점 아래 n번째 자리: n = (마디 길이) × q + r',
-        };
-      } else {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}유한소수가 되도록 하는 미지수 곱하기 킬러`,
-          questionText: '분수 13 / (2² × 3² × 5) 에 자연수 x를 곱하여 유한소수가 되게 하려고 한다. 두 자리 자연수 x 중 가장 작은 값은?',
-          options: ['① 12', '② 18', '③ 24', '④ 27', '⑤ 36'],
-          correctAnswerIndex: 1,
-          explanation: '분모의 소인수 중 3² = 9가 약분되어 사라져야 유한소수가 됩니다.\n분자 13은 3의 배수가 아니므로 x는 9의 배수여야 합니다.\n두 자리 자연수 9의 배수는 18, 27, 36, ... 이므로\n가장 작은 두 자리 자연수는 18 입니다.',
-          trapPoint: '가장 작은 자연수(9)를 구하는 실수를 방지하고 "두 자리 자연수" 조건을 충족해야 합니다.',
-          coreFormula: '유한소수 필수 조건: 분모의 2와 5 이외의 소인수가 분자와 약분되어 소거되어야 함',
-        };
-      }
-    }
-
-    if (normUnit.includes('식의계산') || normUnit.includes('단항식') || normUnit.includes('다항식')) {
-      if (stepLevel === 1) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}지수법칙의 기본 계산`,
-          questionText: '다음 식을 간단히 한 결과로 옳은 것은?\n(a³)² × a⁴',
-          options: ['① a⁹', '② a¹⁰', '③ a¹²', '④ a¹⁴', '⑤ a²⁴'],
-          correctAnswerIndex: 1,
-          explanation: '지수법칙에 의해:\n1) (a³)² = a³ˣ² = a⁶\n2) a⁶ × a⁴ = a⁶⁺⁴ = a¹⁰ 입니다.',
-          trapPoint: '거듭제곱의 거듭제곱은 지수끼리 곱하고, 밑이 같은 거듭제곱의 곱셈은 지수끼리 더합니다.',
-          coreFormula: '(aᵐ)ⁿ = aᵐⁿ, aᵐ × aⁿ = aᵐ⁺ⁿ',
-        };
-      } else if (stepLevel === 2) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}단항식의 곱셈과 나눗셈 혼합계산`,
-          questionText: '식 (-2x²y)³ ÷ 4x⁴y² × 3xy 를 계산한 결과는?',
-          options: ['① -6x³y²', '② 6x³y²', '③ -6xy²', '④ -12x³y', '⑤ 12x²y²'],
-          correctAnswerIndex: 0,
-          explanation: '1) (-2x²y)³ = -8x⁶y³\n2) 나눗셈: (-8x⁶y³) / (4x⁴y²) = -2x²y\n3) 곱셈: (-2x²y) × 3xy = -6x³y²',
-          trapPoint: '음수의 홀수 거듭제곱 부호(-)와 x의 차수 계산을 꼼꼼히 체크해야 합니다.',
-          coreFormula: '단항식 나눗셈은 역수의 곱으로 변환',
-        };
-      } else if (stepLevel === 3) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}다항식 연산에서 어떤 식 A 구하기`,
-          questionText: '어떤 다항식 A에서 3x² - 2x + 1 을 빼야 할 것을 잘못하여 더하였더니 5x² + x - 3 이 되었다. 바르게 계산한 식은?',
-          options: ['① 2x² + 3x - 4', '② -x² + 5x - 5', '③ 2x² - x + 2', '④ -x² + 3x - 2', '⑤ 8x² - x - 2'],
-          correctAnswerIndex: 1,
-          explanation: '잘못 계산한 식:\nA + (3x² - 2x + 1) = 5x² + x - 3\nA = (5x² + x - 3) - (3x² - 2x + 1) = 2x² + 3x - 4\n\n바르게 계산한 식:\nA - (3x² - 2x + 1) = (2x² + 3x - 4) - (3x² - 2x + 1)\n= -x² + 5x - 5 입니다.',
-          trapPoint: '어떤 식 A를 구하는 것으로 끝내지 않고 ‘바르게 계산한 결과’를 도출해야 합니다.',
-          coreFormula: '바른 식 = A - B, 주어진 잘못된 식 = A + B',
-        };
-      } else {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}거듭제곱을 이용한 자연수의 자릿수 킬러`,
-          questionText: '자연수 N = 2¹² × 5⁹ 은 몇 자리의 자연수인가?',
-          options: ['① 9자리', '② 10자리', '③ 11자리', '④ 12자리', '⑤ 13자리'],
-          correctAnswerIndex: 1,
-          explanation: '10 = 2 × 5 임을 활용하여 10의 거듭제곱으로 묶습니다.\nN = 2¹² × 5⁹ = 2³ × (2⁹ × 5⁹) = 8 × (10)⁹\n8 뒤에 0이 9개 붙으므로 1 + 9 = 10 자리 자연수입니다.',
-          trapPoint: '지수가 작은 쪽(9)으로 묶고 남은 계수(8)의 자릿수를 함께 더해야 합니다.',
-          coreFormula: '자릿수 결정: a × 10ⁿ (1 ≤ a < 10) 일 때 (n + 1) 자리',
-        };
-      }
-    }
-
-    if (normUnit.includes('부등식') || normUnit.includes('일차부등식')) {
-      if (stepLevel === 1) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}부등식의 기본 성질`,
-          questionText: 'a < b 일 때, 다음 중 옳은 것은?',
-          options: ['① a - 3 > b - 3', '② -2a < -2b', '③ 3a + 1 < 3b + 1', '④ a/(-4) < b/(-4)', '⑤ 1 - a < 1 - b'],
-          correctAnswerIndex: 2,
-          explanation: '부등식의 양변에 같은 수를 더하거나 빼도 부등호 방향은 바뀌지 않고, 양수를 곱하거나 나누어도 바뀌지 않습니다.\n따라서 ③ 3a + 1 < 3b + 1 은 참입니다.',
-          trapPoint: '음수를 곱하거나 나눌 때만 부등호 방향이 반대로 바뀝니다.',
-          coreFormula: 'a < b 이고 c < 0 이면 ac > bc',
-        };
-      } else if (stepLevel === 2) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}일차부등식 풀이와 해의 범위`,
-          questionText: '일차부등식 4(x - 1) ≤ 2x + 6 을 만족하는 가장 큰 정수 x의 값은?',
-          options: ['① 3', '② 4', '③ 5', '④ 6', '⑤ 7'],
-          correctAnswerIndex: 2,
-          explanation: '4x - 4 ≤ 2x + 6\n2x ≤ 10  =>  x ≤ 5\n따라서 만족하는 가장 큰 정수는 5 입니다.',
-          trapPoint: '괄호 전개 시 -4를 우변으로 이항할 때 부호가 +4가 되는 점을 유의해야 합니다.',
-          coreFormula: '일차부등식 정리: ax ≤ b',
-        };
-      } else if (stepLevel === 3) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}자연수 해의 개수 조건과 미지수의 범위`,
-          questionText: 'x에 대한 일차부등식 3x - a < x + 5 를 만족하는 자연수 x가 3개뿐일 때, 상수 a의 값의 범위는?',
-          options: ['① 1 < a ≤ 3', '② 1 ≤ a < 3', '③ 2 < a ≤ 4', '④ 3 < a ≤ 5', '⑤ 0 < a ≤ 2'],
-          correctAnswerIndex: 0,
-          explanation: '2x < a + 5  =>  x < (a + 5) / 2\n자연수가 1, 2, 3이어야 하므로 3 < (a + 5)/2 ≤ 4\n6 < a + 5 ≤ 8  =>  1 < a ≤ 3 입니다.',
-          trapPoint: '경계값 3과 4 중 어느 쪽에 등호가 포함되는지 부등호의 성립 여부를 직접 대입하여 검증해야 합니다.',
-          coreFormula: '자연수 개수 조건: n < 경계값 ≤ n+1',
-        };
-      } else {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}원가·정가 실생활 부등식 활용 킬러`,
-          questionText: '원가가 5,000원인 물건에 정가를 정하여 정가의 20%를 할인하여 팔아도 원가의 12% 이상의 이익을 남기려고 한다. 이때 정가는 최소 얼마 이상이어야 하는가?',
-          options: ['① 6,500원', '② 7,000원', '③ 7,200원', '④ 7,500원', '⑤ 8,000원'],
-          correctAnswerIndex: 1,
-          explanation: '정가를 x원이라고 하면:\n할인 판매가 = 0.8x (원)\n이익 = 0.8x - 5000\n원가의 12% = 5000 × 0.12 = 600(원)\n\n0.8x - 5000 ≥ 600\n0.8x ≥ 5600\nx ≥ 5600 / 0.8 = 7000(원)\n따라서 정가는 최소 7,000원 이상이어야 합니다.',
-          trapPoint: '할인 판매가(0.8x)와 이익(판매가 - 원가)을 정확히 구분하여 식을 세워야 합니다.',
-          coreFormula: '이익 = 판매가 - 원가 ≥ 원가 × 이익률',
-        };
-      }
-    }
-
-    if (normUnit.includes('일차함수')) {
-      if (stepLevel === 1) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}일차함수의 기울기와 절편 읽기`,
-          questionText: '일차함수 y = -3x + 6 의 그래프에서 기울기를 a, y절편을 b라고 할 때, a + b의 값은?',
-          options: ['① 1', '② 2', '③ 3', '④ 4', '⑤ 5'],
-          correctAnswerIndex: 2,
-          explanation: 'y = ax + b 에서 기울기는 x의 계수인 -3이고, y절편은 상수항인 6입니다.\n따라서 a + b = -3 + 6 = 3 입니다.',
-          trapPoint: '기울기의 부호(-)를 놓치지 않아야 합니다.',
-          coreFormula: 'y = ax + b 에서 기울기 a, y절편 b',
-        };
-      } else if (stepLevel === 2) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}두 점을 지나는 일차함수의 식 구하기`,
-          questionText: '두 점 (1, 3), (3, 7)을 지나는 직선의 방정식의 x절편은?',
-          options: ['① -1/2', '② -1', '③ 1/2', '④ 1', '⑤ 2'],
-          correctAnswerIndex: 0,
-          explanation: '기울기 m = (7 - 3) / (3 - 1) = 4 / 2 = 2\ny - 3 = 2(x - 1)  =>  y = 2x + 1\nx절편은 y = 0 일 때이므로 2x + 1 = 0  =>  x = -1/2 입니다.',
-          trapPoint: '기울기를 구한 후 y절편(1)과 혼동하여 x절편을 잘못 구하지 않아야 합니다.',
-          coreFormula: '기울기 = (y₂ - y₁) / (x₂ - x₁)',
-        };
-      } else if (stepLevel === 3) {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}일차함수 그래프와 좌표축으로 둘러싸인 삼각형 넓이`,
-          questionText: '일차함수 y = -2x + 8 의 그래프가 x축, y축과 만나는 점을 각각 A, B라고 할 때, 삼각형 OAB의 넓이는?',
-          options: ['① 8', '② 12', '③ 16', '④ 20', '⑤ 32'],
-          correctAnswerIndex: 2,
-          explanation: 'x절편 A: y = 0  =>  -2x + 8 = 0  =>  x = 4 (점 A(4, 0))\ny절편 B: x = 0  =>  y = 8 (점 B(0, 8))\n삼각형 OAB는 직각삼각형이므로 넓이 = (1/2) × 4 × 8 = 16 입니다.',
-          trapPoint: '1/2을 곱하지 않고 4 × 8 = 32로 직사각형 넓이를 구하지 않도록 주의해야 합니다.',
-          coreFormula: '좌표축 삼각형 넓이 = (1/2) × |x절편| × |y절편|',
-        };
-      } else {
-        return {
-          id: `dyn-${grade}-${stepLevel}-${variantIndex}-${Date.now()}`,
-          grade, semester, examType, subject, unit, publisher,
-          bookSource: bookSrc, difficultyLevel: diffLevel, stepLevel, scoreWeight, upgradeRound: 1,
-          title: `${stepTag} ${pubTag}두 일차함수의 교점과 넓이 이등분 킬러`,
-          questionText: '두 직선 y = 2x - 4 와 y = -x + 5 의 교점 P의 좌표를 (a, b)라고 할 때, a × b의 값은?',
-          options: ['① 3', '② 4', '③ 5', '④ 6', '⑤ 8'],
-          correctAnswerIndex: 3,
-          explanation: '교점은 두 식을 연립하여 구합니다.\n2x - 4 = -x + 5\n3x = 9  =>  x = 3 (a = 3)\ny = 2(3) - 4 = 2 (b = 2)\n따라서 a × b = 3 × 2 = 6 입니다.',
-          trapPoint: '두 일차함수의 교점이 곧 연립방정식의 해임을 연계하여 해석해야 합니다.',
-          coreFormula: '함수 그래프의 교점 = 연립방정식의 해',
-        };
-      }
-    }
-  }
-
-  // 기본/영어/국어/과학 맞춤형 단계별 문제 생성
-  const subjectStepMap: Record<Subject, Record<number, { title: string; q: string; opt: string[]; ans: number; exp: string; trap: string; form: string }>> = {
-    수학: {
-      1: {
-        title: `${stepTag} ${pubTag}[${grade} ${unit}] 개념 기초`,
-        q: `[${grade} ${subject}] 교육과정 [${unit}] 단원의 기본 원리와 개념 정의로 가장 알맞은 것은?`,
-        opt: ['① 교과서 표준 정의와 연산 규칙을 정확히 적용한다.', '② 임의의 부호를 반대로 변경한다.', '③ 분모가 0인 유리수를 생성한다.', '④ 등식의 양변에 다른 수를 곱한다.', '⑤ 연산 순서를 무시하고 계산한다.'],
-        ans: 0, exp: '교과서 기본 개념에 부합하는 정규 원리를 준수해야 합니다.', trap: '기본 용어 정의의 예외 조건을 숙지해야 합니다.', form: `${unit} 기본 개념 성취기준`,
-      },
-      2: {
-        title: `${stepTag} ${pubTag}[${grade} ${unit}] 100발100중 실전 빈출`,
-        q: `[${unit}] 단원의 최다 빈출 시험 문제 해결 시 반드시 점검해야 할 핵심 절차는?`,
-        opt: ['① 문제의 조건식을 정규화하고 동류항을 정리한다.', '② 문제의 제한 조건을 확인하지 않는다.', '③ 식을 전개하지 않고 추측한다.', '④ 부등호 방향을 무작위로 뒤집는다.', '⑤ 검산 과정을 생략한다.'],
-        ans: 0, exp: '실전 빈출 유형 해결의 핵심은 조건 분석과 정확한 대수 정리입니다.', trap: '실수하기 쉬운 부호 및 이항 실수를 방지해야 합니다.', form: `${unit} 빈출 기출 공식`,
-      },
-      3: {
-        title: `${stepTag} ${pubTag}[${grade} ${unit}] 서술형 고난도 응용`,
-        q: `[${unit}] 단원의 서술형 감점을 방지하기 위한 풀이 과정의 핵심 근거는?`,
-        opt: ['① 미지수의 정의와 단계별 논리적 식의 유도 과정을 명시한다.', '② 계산 결과만 간략히 적는다.', '③ 단위 표기를 생략한다.', '④ 근거 없는 추론을 기재한다.', '⑤ 문제에 없는 기호를 정의 없이 쓴다.'],
-        ans: 0, exp: '서술형 만점 기준은 명확한 미지수 정의와 논리적 유도 단계 서술입니다.', trap: '단위 누락 및 미지수 조건 미기재 감점에 주의해야 합니다.', form: `${unit} 서술형 채점 기준`,
-      },
-      4: {
-        title: `${stepTag} ${pubTag}[${grade} ${unit}] 블랙라벨 1등급 킬러`,
-        q: `[${unit}] 단원의 상위 1% 변별력 킬러 문항을 해결하는 수학적 사고 전략으로 옳은 것은?`,
-        opt: ['① 대수적 조건과 기하학적/함수적 그래프 성질을 통합 해석한다.', '② 단순 반복 계산에만 의존한다.', '③ 특수 조건만을 성급히 일반화한다.', '④ 경계값 분석을 배제한다.', '⑤ 직관만으로 답을 확정한다.'],
-        ans: 0, exp: '블랙라벨 1등급 킬러 문제는 복합 개념의 융합적 분석과 경계값 검증이 핵심입니다.', trap: '문제 속 숨은 전제 조건(자연수, 서로소 등)을 놓치지 않아야 합니다.', form: `${unit} 1등급 심화 융합 원리`,
-      },
-    },
-    영어: {
-      1: {
-        title: `${stepTag} ${pubTag}[${grade} 영어] 교과서 핵심 어법`,
-        q: '다음 문장의 빈칸에 들어갈 가장 알맞은 말은?\n"She ______ English very well every day."',
-        opt: ['① speak', '② speaks', '③ is speak', '④ speaking', '⑤ spoke'],
-        ans: 1, exp: '주어가 3인칭 단수(She)이고 현재 습관(every day)이므로 speaks가 올바릅니다.', trap: '3인칭 단수 현재형 -(e)s 부착 규칙 확인', form: '3인칭 단수 주어 + 동사-(e)s',
-      },
-      2: {
-        title: `${stepTag} ${pubTag}[${grade} 영어] 100발100중 실전 기출`,
-        q: '다음 괄호 안에서 어법상 가장 적절한 것끼리 짝지어진 것은?\nKevin has (A)[live / lived] in Seoul since he was ten. He is interested in (B)[play / playing] soccer.',
-        opt: ['① live — play', '② lived — play', '③ lived — playing', '④ live — playing', '⑤ living — played'],
-        ans: 2, exp: '(A) have/has + p.p. 현재완료이므로 lived\n(B) 전치사 in 뒤에는 동명사 playing이 와야 합니다.', trap: '현재완료 과거분사 형태와 전치사+동명사 결합 규칙', form: 'have/has + p.p. / 전치사 + V-ing',
-      },
-      3: {
-        title: `${stepTag} ${pubTag}[${grade} 영어] 실전 독해 및 문맥 추론`,
-        q: '다음 글의 흐름으로 보아 빈칸에 들어갈 접속사로 가장 적절한 것은?\n"It was raining heavily outside. ________, the students continued their soccer match."',
-        opt: ['① Therefore', '② However', '③ Because', '④ Although', '⑤ For example'],
-        ans: 1, exp: '비가 심하게 내렸음에도 경기를 계속했다는 상반된 역접 관계이므로 However(그러나)가 올바릅니다.', trap: '앞뒤 문장의 인과/역접 논리 관계를 면밀히 분석해야 합니다.', form: '역접 접속부사: However, Nevertheless',
-      },
-      4: {
-        title: `${stepTag} ${pubTag}[${grade} 영어] 1등급 킬러 어법 판별`,
-        q: '다음 중 어법상 옳지 않은 문장을 포함하는 것은?',
-        opt: ['① The book was written by my favorite author.', '② I don\'t know where does he live.', '③ If it rains tomorrow, we will stay at home.', '④ She made me clean the living room.', '⑤ The boy who is wearing a red hat is my brother.'],
-        ans: 1, exp: '② 간접의문문의 어순은 [의문사 + 주어 + 동사]이므로 where does he live 가 아니라 where he lives 가 올바릅니다.', trap: '간접의문문 평서문 어순(의+주+동)과 시제/인칭 일치 주의', form: '간접의문문: 의문사 + 주어 + 동사',
-      },
-    },
-    국어: {
-      1: {
-        title: `${stepTag} ${pubTag}[${grade} 국어] 교과서 기본 갈래`,
-        q: '다음 중 대상의 모습을 사람이 아닌 사물에 인격을 부여하여 표현한 ‘의인법’에 해당하는 것은?',
-        opt: ['① 내 마음은 호수요.', '② 꽃처럼 붉은 노을이 진다.', '③ 바람이 나무에게 귓속말을 건넨다.', '④ 눈이 시리도록 푸른 바다', '⑤ 달빛이 차갑게 부서진다.'],
-        ans: 2, exp: '바람이 사람처럼 귓속말을 건넨다는 표현은 사물을 인격화한 의인법입니다.', trap: '은유법(A=B)과 직유법(~처럼)과의 차이점을 명확히 구별해야 합니다.', form: '비유법: 직유, 은유, 의인, 대유',
-      },
-      2: {
-        title: `${stepTag} ${pubTag}[${grade} 국어] 100발100중 실전 기출`,
-        q: '다음 중 품사의 특성상 형태가 변하지 않는 ‘불변어’에만 해당하는 것은?',
-        opt: ['① 명사, 대명사, 수사, 조사, 관형사, 부사, 감탄사', '② 동사, 형용사', '③ 서술격 조사', '④ 어간과 어미', '⑤ 보조 용언'],
-        ans: 0, exp: '우리말에서 형태가 변하는 가변어는 용언(동사, 형용사)과 서술격 조사 ‘이다’뿐이며 나머지는 모두 불변어입니다.', trap: '조사 중 서술격 조사 ‘이다’는 활용하므로 가변어에 속합니다.', form: '국어 9품사 기능 및 형태별 분류 체계',
-      },
-      3: {
-        title: `${stepTag} ${pubTag}[${grade} 국어] 서술상 특징 및 문학 비판`,
-        q: '소설에서 서술자가 작품 밖에서 인물의 내면 심리와 행동을 모두 꿰뚫어 보고 서술하는 시점은?',
-        opt: ['① 1인칭 주인공 시점', '② 1인칭 관찰자 시점', '③ 3인칭 관찰자 시점', '④ 전지적 작가 시점', '⑤ 작가 관찰자 시점'],
-        ans: 3, exp: '작품 밖의 서술자가 전지전능한 신의 위치에서 인물의 속마음까지 모두 서술하는 시점은 전지적 작가 시점입니다.', trap: '3인칭 관찰자 시점은 겉모습만 객관적으로 묘사한다는 점에서 차이가 있습니다.', form: '소설의 4대 시점 분류 체계',
-      },
-      4: {
-        title: `${stepTag} ${pubTag}[${grade} 국어] 1등급 심화 외적 준거 킬러`,
-        q: '문학 작품을 감상할 때 작가의 생애, 창작 의도, 심리 상태를 중심으로 해석하는 관점은?',
-        opt: ['① 표현론적 관점', '② 반영론적 관점', '③ 효용론적 관점', '④ 내재적(절대주의적) 관점', '⑤ 구조주의적 관점'],
-        ans: 0, exp: '작가를 중심으로 작품을 해석하는 외재적 관점은 표현론적 관점입니다. (반영론=시대 현실, 효용론=독자 영향)', trap: '표현론(작가), 반영론(시대), 효용론(독자)의 기준 주체를 구별해야 합니다.', form: '문학 감상의 4대 관점 (내재적/외재적)',
-      },
-    },
-    과학: {
-      1: {
-        title: `${stepTag} ${pubTag}[${grade} 과학] 교과서 기본 개념`,
-        q: '물질의 상태 변화 중 고체가 액체를 거치지 않고 직접 기체로 변하거나 기체가 고체로 변하는 현상은?',
-        opt: ['① 융해', '② 기화', '③ 승화', '④ 응고', '⑤ 액화'],
-        ans: 2, exp: '고체와 기체 사이의 직접적인 상태 변화를 승화라고 합니다. (드라이아이스 기화, 성에 형성 등)', trap: '융해(고체→액체), 기화(액체→기체)와의 상태 변화 경로 구별', form: '물질의 세 가지 상태 변화 명칭',
-      },
-      2: {
-        title: `${stepTag} ${pubTag}[${grade} 과학] 100발100중 실전 기출`,
-        q: '저항이 10Ω인 니크롬선에 20V의 전압을 걸어주었을 때, 회로에 흐르는 전류의 세기는?',
-        opt: ['① 0.5A', '② 1A', '③ 2A', '④ 10A', '⑤ 200A'],
-        ans: 2, exp: '옴의 법칙(V = IR)에 의해 I = V / R = 20V / 10Ω = 2A 입니다.', trap: 'V=IR 공식에서 전압과 저항의 비를 역수로 계산하지 않도록 주의해야 합니다.', form: '옴의 법칙: I = V / R',
-      },
-      3: {
-        title: `${stepTag} ${pubTag}[${grade} 과학] 탐구 실험 자료 분석`,
-        q: '질량 2kg인 물체를 지면으로부터 5m 높이에서 가만히 떨어뜨렸다. 지면에 도달하기 직전의 운동 에너지는? (단, 공기 저항은 무시하며 중력 가속도는 9.8m/s²이다.)',
-        opt: ['① 49J', '② 98J', '③ 196J', '④ 245J', '⑤ 392J'],
-        ans: 1, exp: '역학적 에너지 보존 법칙에 의해 최고점에서의 위치 에너지가 지면 직전의 운동 에너지로 전환됩니다.\nEp = 9.8 × m × h = 9.8 × 2 × 5 = 98(J) 입니다.',
-        trap: '지면 직전에는 위치 에너지가 0이 되고 모두 운동 에너지로 보존 전환됩니다.',
-        form: '역학적 에너지 보존: 위치 에너지(9.8mh) = 운동 에너지(1/2 mv²)',
-      },
-      4: {
-        title: `${stepTag} ${pubTag}[${grade} 과학] 1등급 유전 킬러`,
-        q: '멘델의 유전 법칙에서 순종의 둥글고 노란색 완두(RRYY)와 주름지고 초록색 완두(rryy)를 교배하여 얻은 잡종 1대(RrYy)를 자가 수분시켰을 때, 잡종 2대에서 ‘주름지고 노란색’ 완두가 나타날 확률은?',
-        opt: ['① 1/16', '② 3/16', '③ 6/16', '④ 9/16', '⑤ 12/16'],
-        ans: 1, exp: '잡종 2대의 표현형 분리비는 [둥글고 노랑] : [둥글고 초록] : [주름지고 노랑] : [주름지고 초록] = 9 : 3 : 3 : 1 입니다.\n따라서 주름지고 노란색(열성·우성)의 비율은 3/16 입니다.',
-        trap: '단성 잡종 분리비(3:1)와 양성 잡종 분리비(9:3:3:1)를 혼동하지 않아야 합니다.',
-        form: '양성 잡종 독립의 법칙 표현형 비: 9 : 3 : 3 : 1',
-      },
-    },
-  };
-
-  const generic = subjectStepMap[subject]?.[stepLevel] || subjectStepMap['수학'][stepLevel];
-
-  return {
-    id: `dyn-${grade}-${semester}-${examType}-${subject}-${stepLevel}-${variantIndex}-${Date.now()}`,
-    grade,
-    semester,
-    examType,
-    subject,
-    unit,
-    publisher,
-    bookSource: bookSrc,
-    difficultyLevel: diffLevel,
-    stepLevel,
-    scoreWeight,
-    upgradeRound: 1,
-    title: generic.title,
-    questionText: generic.q,
-    options: generic.opt,
-    correctAnswerIndex: generic.ans,
-    explanation: generic.exp,
-    trapPoint: generic.trap,
-    coreFormula: generic.form,
-  };
-}
-
 // 시험 시간 모드(10분/20분/30분/45분)에 따른 맞춤형 단계별 문항 필터링 및 조립 엔진
+// [1회 시험 내 문항 중복 100% 방지] 및 [이전 회차 푼 문제 다음 회차 미출제] 원칙을 보장합니다.
 export function getFilteredQuestions(params: {
   grade: Grade;
   semester: Semester;
@@ -1148,6 +688,8 @@ export function getFilteredQuestions(params: {
   selectedUnits?: string[];
   timerMinutes?: number;
   upgradeRound?: number;
+  examRound?: number;
+  excludeQuestionKeys?: string[];
 }): Question[] {
   const {
     grade,
@@ -1158,6 +700,8 @@ export function getFilteredQuestions(params: {
     selectedUnits,
     publisher,
     timerMinutes = 30,
+    examRound = 1,
+    excludeQuestionKeys = [],
   } = params;
 
   // 1. 선택된 시험 시간 모드 스펙 획득 (10분: 5문항, 20분: 10문항, 30분: 15문항, 45분: 20문항)
@@ -1182,9 +726,51 @@ export function getFilteredQuestions(params: {
     }
   }
 
+  // -----------------------------------------------------------------
+  // [중복 검증 시스템]
+  // 1) sessionSignatures: 현재 1회 문제풀이 내에서 어떤 문제도 중복되지 않도록 방지
+  // 2) pastSignatures: 이전 회차(1회차, 2회차...)에서 풀었던 문제들은 다음 회차에서 완전 차단
+  // -----------------------------------------------------------------
+  const sessionSignatures = new Set<string>();
+  const pastSignatures = new Set<string>();
+
+  excludeQuestionKeys.forEach((key) => {
+    if (!key) return;
+    const clean = normalizeText(key);
+    pastSignatures.add(clean);
+    if (clean.length > 20) {
+      pastSignatures.add(clean.slice(0, 25));
+    }
+  });
+
+  const getQuestionSigs = (q: Question): string[] => {
+    const list: string[] = [];
+    if (q.title) list.push(normalizeText(q.title));
+    if (q.questionText) list.push(normalizeText(q.questionText.slice(0, 30)));
+    if (q.id) list.push(normalizeText(q.id));
+    return list;
+  };
+
+  const isDuplicate = (q: Question, checkPast = true): boolean => {
+    const sigs = getQuestionSigs(q);
+    // 1회 시험 내 중복 체크
+    if (sigs.some((s) => sessionSignatures.has(s))) {
+      return true;
+    }
+    // 이전 회차 기출 중복 체크
+    if (checkPast && sigs.some((s) => pastSignatures.has(s))) {
+      return true;
+    }
+    return false;
+  };
+
+  const recordQuestion = (q: Question) => {
+    const sigs = getQuestionSigs(q);
+    sigs.forEach((s) => sessionSignatures.add(s));
+  };
+
   // 4. 4단계(Step 1 ~ Step 4) 난이도별 목표 문항 풀 조립
   const assembledQuestions: Question[] = [];
-  const existingIds = new Set<string>();
 
   const activeUnitList = selectedUnits && selectedUnits.length > 0
     ? selectedUnits
@@ -1200,9 +786,9 @@ export function getFilteredQuestions(params: {
   stepsToBuild.forEach(({ step, targetNum }) => {
     if (targetNum <= 0) return;
 
-    // A. 기존 문항 은행에서 해당 단계에 부합하는 문항 탐색
+    // A. 기존 문항 은행에서 해당 단계에 부합하고, 이전 회차 및 이번 회차에 중복되지 않는 문항 탐색
     const matchingFromBank = unitFilteredPool.filter((q) => {
-      if (existingIds.has(q.id)) return false;
+      if (isDuplicate(q, true)) return false;
       if (step === 1) return q.difficultyLevel === '기본';
       if (step === 2) return q.difficultyLevel === '100발100중 실전';
       if (step === 3) return q.difficultyLevel === '블랙라벨 Step2';
@@ -1212,20 +798,24 @@ export function getFilteredQuestions(params: {
     let currentAdded = 0;
     for (const q of matchingFromBank) {
       if (currentAdded >= targetNum) break;
-      assembledQuestions.push({
+      const standardized = ensure4Options({
         ...q,
         stepLevel: step,
         scoreWeight: step === 1 ? 4 : step === 4 ? 6 : 5,
         publisher: publisher || q.publisher,
       });
-      existingIds.add(q.id);
+      assembledQuestions.push(standardized);
+      recordQuestion(standardized);
       currentAdded++;
     }
 
     // B. 부족한 문항은 선택된 단원들에 기반하여 정밀 단계별 고품질 문항 동적 생성 보강
-    while (currentAdded < targetNum) {
-      const targetUnit = activeUnitList[currentAdded % activeUnitList.length];
-      const newQ = generateTieredQuestion({
+    let genAttempt = 0;
+    while (currentAdded < targetNum && genAttempt < 60) {
+      const targetUnit = activeUnitList[(currentAdded + genAttempt) % activeUnitList.length];
+      const variantIdx = currentAdded + 1 + genAttempt * 2 + (examRound - 1) * 5;
+
+      const candidate = generateTieredQuestion({
         grade,
         semester,
         examType,
@@ -1233,23 +823,66 @@ export function getFilteredQuestions(params: {
         unit: targetUnit,
         publisher,
         stepLevel: step,
-        variantIndex: currentAdded + 1,
+        variantIndex: variantIdx,
         bookType,
+        examRound,
       });
-      assembledQuestions.push(newQ);
-      existingIds.add(newQ.id);
-      currentAdded++;
+
+      const formatted = ensure4Options(candidate);
+
+      // 이번 회차 및 이전 회차 미출제 문항 우선 채택
+      if (!isDuplicate(formatted, true)) {
+        assembledQuestions.push(formatted);
+        recordQuestion(formatted);
+        currentAdded++;
+      }
+      genAttempt++;
+    }
+
+    // 만약 이전 회차 기출 누적으로 인해 미출제 문항이 소진된 경우 (극단적인 회차 반복 시)
+    // 1회 내 중복은 100% 방지하면서 새 회차 표식을 부착하여 보충
+    let fallbackAttempt = 0;
+    while (currentAdded < targetNum && fallbackAttempt < 40) {
+      const targetUnit = activeUnitList[(currentAdded + fallbackAttempt) % activeUnitList.length];
+      const candidate = generateTieredQuestion({
+        grade,
+        semester,
+        examType,
+        subject,
+        unit: targetUnit,
+        publisher,
+        stepLevel: step,
+        variantIndex: currentAdded + fallbackAttempt * 3 + examRound * 11,
+        bookType,
+        examRound,
+      });
+
+      const formatted = ensure4Options({
+        ...candidate,
+        id: `${candidate.id}-r${examRound}-fb${fallbackAttempt}`,
+        title: `${candidate.title} [${examRound}회차 추가도전]`,
+      });
+
+      if (!isDuplicate(formatted, false)) {
+        assembledQuestions.push(formatted);
+        recordQuestion(formatted);
+        currentAdded++;
+      }
+      fallbackAttempt++;
     }
   });
 
   // 5. 문항 번호 순서 정렬: Step 1 (기본) -> Step 2 (빈출) -> Step 3 (응용) -> Step 4 (킬러)
   assembledQuestions.sort((a, b) => (a.stepLevel || 1) - (b.stepLevel || 1));
 
-  return assembledQuestions.slice(0, targetCount).map((q, idx) => ({
-    ...q,
-    grade,
-    publisher: publisher || q.publisher,
-  }));
+  return assembledQuestions.slice(0, targetCount).map((q) => {
+    const formatted = ensure4Options(q);
+    return {
+      ...formatted,
+      grade,
+      publisher: publisher || formatted.publisher,
+    };
+  });
 }
 
 // 시험 성적이 우수하거나 학생이 업그레이드를 요청할 때 고난도 문항으로 진화 생성하는 함수
@@ -1260,15 +893,16 @@ export function generateUpgradedQuestions(
 ): Question[] {
   return baseQuestions.map((q, idx) => {
     const isUpgradedToBlackLabel = targetBook === 'blacklabel' || round >= 2;
+    const formatted = ensure4Options(q);
     return {
-      ...q,
-      id: `${q.id}-upgraded-r${round}-${idx}`,
+      ...formatted,
+      id: `${formatted.id}-upgraded-r${round}-${idx}`,
       upgradeRound: round,
-      bookSource: isUpgradedToBlackLabel ? 'blacklabel' : q.bookSource,
+      bookSource: isUpgradedToBlackLabel ? 'blacklabel' : formatted.bookSource,
       difficultyLevel: isUpgradedToBlackLabel ? '블랙라벨 Step3 킬러' : '100발100중 실전',
       title: isUpgradedToBlackLabel
-        ? `[블랙라벨 1등급 심화 R${round}] ${q.unit} 변형 킬러`
-        : `[100발100중 실전 R${round}] ${q.unit} 고득점 기출`,
+        ? `[블랙라벨 1등급 심화 R${round}] ${formatted.unit} 변형 킬러`
+        : `[100발100중 실전 R${round}] ${formatted.unit} 고득점 기출`,
     };
   });
 }

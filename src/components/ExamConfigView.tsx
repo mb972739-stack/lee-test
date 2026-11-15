@@ -20,7 +20,7 @@ import {
 import { CHARACTER_STAGES } from '../data/characterConfig';
 import { DEFAULT_TEXTBOOK_SETTINGS } from '../data/textbooks';
 import { getAvailableUnits, getDefaultUnitsForExam } from '../data/curriculumUnits';
-import { getFilteredQuestions } from '../utils/questionEngine';
+import { getFilteredQuestions, EXAM_MODES_CONFIG } from '../utils/questionEngine';
 import { sounds } from '../utils/soundEffects';
 
 interface ExamConfigViewProps {
@@ -165,7 +165,17 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
 
   const currentStage = CHARACTER_STAGES.find((s) => s.stage === currentStudent.character.stage) || CHARACTER_STAGES[0];
 
-  // 현재 설정된 학년/학기/고사/과목/단원 범위에 맞춘 실시간 출제 문항
+  const currentModeSpec = EXAM_MODES_CONFIG[selectedTimer] || EXAM_MODES_CONFIG[30];
+
+  const pastSessionsForSubject = (currentStudent.examHistory || []).filter(
+    (s) => s.subject === selectedSubject
+  );
+  const nextRound = pastSessionsForSubject.length + 1;
+  const pastQuestionKeys = (currentStudent.examHistory || []).flatMap((s) =>
+    s.questions.map((q) => q.title || q.questionText)
+  );
+
+  // 현재 설정된 학년/학기/고사/과목/단원 및 시험 모드(시간)에 맞춘 실시간 출제 문항
   const previewQuestions = getFilteredQuestions({
     grade: selectedGrade,
     semester: selectedSemester,
@@ -174,6 +184,9 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
     bookType: selectedBookType,
     publisher: currentSubjectSetting.publisher,
     selectedUnits: activeUnits.length > 0 ? activeUnits : getDefaultUnitsForExam(selectedGrade, selectedSemester, selectedExamType, selectedSubject),
+    timerMinutes: selectedTimer,
+    examRound: nextRound,
+    excludeQuestionKeys: pastQuestionKeys,
   });
 
   const handleStart = () => {
@@ -496,7 +509,7 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
 
             {/* 실시간 출제 문항 즉시 반영 미리보기 */}
             <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
@@ -504,9 +517,34 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
                     <span>출제 문항 실시간 준비 완료 ({previewQuestions.length}문항)</span>
                   </span>
                 </div>
-                <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
-                  {selectedGrade} {selectedSemester} {selectedExamType} 기준
-                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                    {currentModeSpec.modeName} · {currentModeSpec.tagline}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                    {selectedGrade} {selectedSemester} {selectedExamType}
+                  </span>
+                </div>
+              </div>
+
+              {/* 난이도 구성 요약 바 */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] py-1">
+                <div className="bg-white px-2.5 py-1.5 rounded-lg border border-sky-200 flex items-center justify-between">
+                  <span className="text-sky-700 font-bold">Step 1 기본 (4점)</span>
+                  <span className="font-extrabold text-sky-900">{currentModeSpec.tierBreakdown.step1}문항</span>
+                </div>
+                <div className="bg-white px-2.5 py-1.5 rounded-lg border border-emerald-200 flex items-center justify-between">
+                  <span className="text-emerald-700 font-bold">Step 2 빈출 (5점)</span>
+                  <span className="font-extrabold text-emerald-900">{currentModeSpec.tierBreakdown.step2}문항</span>
+                </div>
+                <div className="bg-white px-2.5 py-1.5 rounded-lg border border-amber-200 flex items-center justify-between">
+                  <span className="text-amber-700 font-bold">Step 3 응용 (5점)</span>
+                  <span className="font-extrabold text-amber-900">{currentModeSpec.tierBreakdown.step3}문항</span>
+                </div>
+                <div className="bg-white px-2.5 py-1.5 rounded-lg border border-purple-200 flex items-center justify-between">
+                  <span className="text-purple-700 font-bold">Step 4 킬러 (6점)</span>
+                  <span className="font-extrabold text-purple-900">{currentModeSpec.tierBreakdown.step4}문항</span>
+                </div>
               </div>
 
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
@@ -519,14 +557,27 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
                       <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white font-bold text-[11px] shrink-0">
                         {idx + 1}번
                       </span>
+                      {q.stepLevel && (
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                          q.stepLevel === 1 ? 'bg-sky-100 text-sky-800' :
+                          q.stepLevel === 2 ? 'bg-emerald-100 text-emerald-800' :
+                          q.stepLevel === 3 ? 'bg-amber-100 text-amber-800' :
+                          'bg-purple-100 text-purple-800 font-extrabold'
+                        }`}>
+                          Step {q.stepLevel}
+                        </span>
+                      )}
                       <span className="font-semibold text-xs text-slate-800 truncate">
                         {q.title}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 text-[10px]">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold truncate max-w-32">
+                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold truncate max-w-28">
                         {q.unit}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-white font-bold">
+                        {q.scoreWeight || 5}점
                       </span>
                       <span className={`px-2 py-0.5 rounded font-bold ${
                         q.bookSource === 'blacklabel' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
@@ -539,7 +590,7 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
               </div>
 
               <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
-                <span>💡 학년·학기·단원을 변경하면 위 문제들이 <strong>즉시 해당 범위 문제로 새로고침</strong>됩니다.</span>
+                <span>💡 학년·학기·단원 및 시험시간을 변경하면 <strong>범위와 난이도 단계별 문항이 즉시 자동 재배치</strong>됩니다.</span>
                 <span className="font-bold text-indigo-600">{selectedGrade} {selectedSubject}</span>
               </div>
             </div>
@@ -636,12 +687,12 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
               {[
-                { m: 10, label: '10분 벼락치기', desc: '단원 핵심 점검' },
-                { m: 20, label: '20분 유형완성', desc: '빈출 집중 훈련' },
-                { m: 30, label: '30분 모의평가', desc: '중간 실전 모의' },
-                { m: 45, label: '45분 본시험 시간', desc: '실제 중학 시험시간' },
+                { m: 10, label: '10분 벼락치기', qCount: '5문항', steps: 'Step 1~2', desc: '핵심 개념 3 + 빈출 2' },
+                { m: 20, label: '20분 유형완성', qCount: '10문항', steps: 'Step 1~3', desc: '기본 3 + 빈출 5 + 응용 2' },
+                { m: 30, label: '30분 모의평가', qCount: '15문항', steps: 'Step 1~4', desc: '표준 모의 + 1등급 킬러 1' },
+                { m: 45, label: '45분 본시험 시간', qCount: '20문항', steps: 'Step 1~4', desc: '학교 시험지 20문항 완결' },
               ].map((t) => (
                 <button
                   key={t.m}
@@ -649,14 +700,24 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
                     setSelectedTimer(t.m);
                     sounds.playClick();
                   }}
-                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative ${
                     selectedTimer === t.m
-                      ? 'border-indigo-600 bg-indigo-50/80 text-indigo-900 ring-1 ring-indigo-500 font-bold'
-                      : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 font-medium'
+                      ? 'border-indigo-600 bg-indigo-50/90 text-indigo-950 ring-1 ring-indigo-500 font-bold shadow-xs'
+                      : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 font-medium'
                   }`}
                 >
-                  <div className="text-sm font-bold">{t.label}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">{t.desc}</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-900">{t.label}</span>
+                    <span className="text-[11px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                      {t.qCount}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <span className="text-[10px] font-semibold px-1 rounded bg-slate-100 text-slate-600">
+                      {t.steps}
+                    </span>
+                    <span className="text-[10px] text-slate-500 truncate">{t.desc}</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -688,6 +749,12 @@ export const ExamConfigView: React.FC<ExamConfigViewProps> = ({ onOpenTextbookMo
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-400">지정 단원 범위</span>
                 <span className="font-bold text-slate-900">{activeUnits.length}개 단원 선택됨</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-100">
+                <span className="text-slate-400">출제 모드 & 문항</span>
+                <span className="font-extrabold text-indigo-700">
+                  {currentModeSpec.modeName} ({previewQuestions.length}문항)
+                </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-400">출제 교재</span>

@@ -58,7 +58,7 @@ export const ExamRoom: React.FC = () => {
       sounds.playWarning();
     } else if (secondsLeft === 0) {
       sounds.playWarning();
-      submitExam();
+      submitExam((currentExam.timerMinutes || 30) * 60);
     } else if (secondsLeft > 0 && secondsLeft % 20 === 0) {
       chargeFeverGauge(1);
     }
@@ -174,19 +174,51 @@ export const ExamRoom: React.FC = () => {
         <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-xs p-6 sm:p-8 flex flex-col justify-between space-y-6 min-h-[520px]">
           <div className="space-y-4">
             {/* Question Meta Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-extrabold flex items-center justify-center text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-extrabold flex items-center justify-center text-sm shadow-2xs">
                   {currentIndex + 1}
                 </span>
-                <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200">
+
+                {/* 난이도 Step 단계 뱃지 */}
+                {currentQ.stepLevel && (
+                  <span
+                    className={`text-xs font-bold px-2.5 py-1 rounded-md border ${
+                      currentQ.stepLevel === 1
+                        ? 'bg-sky-50 text-sky-700 border-sky-200'
+                        : currentQ.stepLevel === 2
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : currentQ.stepLevel === 3
+                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        : 'bg-purple-50 text-purple-800 border-purple-300 font-extrabold ring-1 ring-purple-200'
+                    }`}
+                  >
+                    Step {currentQ.stepLevel}{' '}
+                    {currentQ.stepLevel === 1
+                      ? '교과서 기본'
+                      : currentQ.stepLevel === 2
+                      ? '실전 빈출'
+                      : currentQ.stepLevel === 3
+                      ? '고난도 응용'
+                      : '1등급 킬러'}
+                  </span>
+                )}
+
+                {/* 배점 뱃지 */}
+                <span className="text-xs font-extrabold px-2.5 py-1 rounded-md bg-slate-800 text-white shadow-2xs">
+                  배점 {currentQ.scoreWeight || 5}점
+                </span>
+
+                <span className="text-xs font-bold px-2 py-1 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200">
                   {currentQ.grade} {currentQ.semester}
                 </span>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-slate-100 text-slate-700">
+
+                <span className="text-xs font-medium px-2 py-1 rounded-md bg-slate-100 text-slate-700">
                   {currentQ.unit}
                 </span>
+
                 <span
-                  className={`text-xs font-semibold px-2.5 py-1 rounded-md ${
+                  className={`text-xs font-semibold px-2 py-1 rounded-md ${
                     currentQ.bookSource === 'blacklabel'
                       ? 'bg-purple-100 text-purple-800'
                       : 'bg-emerald-100 text-emerald-800'
@@ -224,7 +256,7 @@ export const ExamRoom: React.FC = () => {
               </div>
             )}
 
-            {/* 5-Choice Options */}
+            {/* 4-Choice Options (4지선다 ①~④) */}
             <div className="space-y-2.5 pt-2">
               {currentQ.options.map((option, optIdx) => {
                 const isSelected = selectedAnswer === optIdx;
@@ -321,9 +353,9 @@ export const ExamRoom: React.FC = () => {
                     {flagged && <Bookmark className="w-3 h-3 fill-amber-500 text-amber-500" />}
                   </button>
 
-                  {/* 5 OMR Bubbles */}
+                  {/* 4 OMR Bubbles (①, ②, ③, ④) */}
                   <div className="flex items-center gap-1.5">
-                    {[0, 1, 2, 3, 4].map((choice) => {
+                    {[0, 1, 2, 3].map((choice) => {
                       const isMarked = ans === choice;
                       return (
                         <button
@@ -414,7 +446,8 @@ export const ExamRoom: React.FC = () => {
               <button
                 onClick={() => {
                   setShowSubmitConfirm(false);
-                  submitExam();
+                  const elapsed = Math.max(1, totalTimeSeconds - secondsLeft);
+                  submitExam(elapsed);
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs"
               >

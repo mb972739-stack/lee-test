@@ -166,30 +166,38 @@ export const ExamResultView: React.FC = () => {
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {isCorrect ? (
                       <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                     ) : (
                       <XCircle className="w-5 h-5 text-red-500 shrink-0" />
                     )}
-                    <div>
-                      <span className="font-bold text-xs text-slate-900 mr-2">
-                        {idx + 1}번. {q.title}
+                    <span className="font-bold text-xs text-slate-900 mr-1">
+                      {idx + 1}번. {q.title}
+                    </span>
+                    {q.stepLevel && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        q.stepLevel === 1 ? 'bg-sky-100 text-sky-800' :
+                        q.stepLevel === 2 ? 'bg-emerald-100 text-emerald-800' :
+                        q.stepLevel === 3 ? 'bg-amber-100 text-amber-800' :
+                        'bg-purple-100 text-purple-800'
+                      }`}>
+                        Step {q.stepLevel}
                       </span>
-                      <span className="text-[11px] text-slate-500">[{q.unit}]</span>
-                    </div>
+                    )}
+                    <span className="text-[11px] text-slate-500">[{q.unit}]</span>
                   </div>
 
                   <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded ${
+                    className={`text-xs font-bold px-2 py-0.5 rounded shrink-0 ${
                       isCorrect ? 'text-emerald-700 bg-emerald-100' : 'text-red-700 bg-red-100'
                     }`}
                   >
-                    {isCorrect ? '정답 (+20점)' : '오답 (오답노트 등록)'}
+                    {isCorrect ? `정답 (+${q.scoreWeight || 5}점)` : '오답 (오답노트 등록)'}
                   </span>
                 </div>
 
-                <div className="mt-2 text-xs text-slate-700 space-y-1">
+                <div className="mt-2 text-xs text-slate-700 space-y-1.5">
                   <div className="flex items-center gap-4 text-[11px]">
                     <span>
                       내 마킹: <strong className={isCorrect ? 'text-emerald-700' : 'text-red-600'}>
@@ -202,8 +210,15 @@ export const ExamResultView: React.FC = () => {
                     </span>
                   </div>
 
+                  {q.coreFormula && (
+                    <div className="mt-1.5 p-2 bg-indigo-50/70 rounded-lg border border-indigo-100 text-[11px] text-indigo-900">
+                      <strong className="text-indigo-700">핵심 공식·개념: </strong>
+                      {q.coreFormula}
+                    </div>
+                  )}
+
                   {!isCorrect && (
-                    <div className="mt-2 p-2.5 bg-white rounded-lg border border-red-100 text-[11px] text-slate-600">
+                    <div className="mt-1 p-2 bg-white rounded-lg border border-red-100 text-[11px] text-slate-600">
                       <strong className="text-red-600">오답 함정 분석: </strong>
                       {q.trapPoint}
                     </div>
@@ -216,13 +231,20 @@ export const ExamResultView: React.FC = () => {
       </div>
 
       {/* Bottom Navigation */}
-      <div className="flex justify-center gap-3 pt-2">
+      <div className="flex flex-wrap justify-center gap-3 pt-2">
         <button
           onClick={() => setActiveTab('exam_config')}
           className="py-2.5 px-5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>새 모의고사 응시하기</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('stats')}
+          className="py-2.5 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+        >
+          <span>일간 학습 리포트 확인</span>
+          <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

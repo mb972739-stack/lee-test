@@ -77,8 +77,34 @@ export interface ExamSession {
   answers: Record<number, number>; // questionIndex -> selectedOptionIndex
   flagged: Record<number, boolean>;
   score?: number; // 0 ~ 100
+  correctCount?: number;
   timeSpentSeconds?: number;
+  characterLevelBefore?: number;
+  characterLevelAfter?: number;
   questions: Question[];
+}
+
+export interface DailySubjectStats {
+  studySeconds: number;
+  examsCompleted: number;
+  questionsSolved: number;
+  correctCount: number;
+}
+
+export interface DailyStudyLog {
+  date: string; // YYYY-MM-DD (로컬 날짜 기준)
+  studySeconds: number;
+  examsCompleted: number;
+  questionsSolved: number;
+  correctCount: number;
+  expGained: number;
+  startLevel: number;
+  endLevel: number;
+  startStage: 1 | 2 | 3 | 4;
+  endStage: 1 | 2 | 3 | 4;
+  wrongNotesMastered?: number;
+  berriesFed?: number;
+  bySubject?: Partial<Record<Subject, DailySubjectStats>>;
 }
 
 export interface WrongNoteItem {
@@ -142,6 +168,7 @@ export interface StudentProfile {
   character: CharacterState;
   wrongNotes: WrongNoteItem[];
   examHistory: ExamSession[];
+  dailyLogs?: Record<string, DailyStudyLog>;
   createdAt: string;
   lastLoginAt: string;
 }

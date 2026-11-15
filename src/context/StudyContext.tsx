@@ -6,6 +6,7 @@ import {
   Question,
   ExamSession,
   WrongNoteItem,
+  DailyStudyLog,
   Grade,
   Semester,
   ExamType,
@@ -15,8 +16,9 @@ import {
   SubjectTextbookSetting,
 } from '../types';
 import { INITIAL_BADGES, CHARACTER_STAGES } from '../data/characterConfig';
-import { getFilteredQuestions, generateUpgradedQuestions, FULL_QUESTION_BANK } from '../utils/questionEngine';
-import { DEFAULT_TEXTBOOK_SETTINGS, getStandardTextbookSettings } from '../data/textbooks';
+import { getFilteredQuestions, generateUpgradedQuestions, ensure4Options } from '../utils/questionEngine';
+import { getStandardTextbookSettings } from '../data/textbooks';
+import { getLocalDateKey, getStageForLevel, shiftDateKey } from '../utils/dailyReport';
 import { sounds } from '../utils/soundEffects';
 
 interface StudyContextType {
@@ -49,7 +51,7 @@ interface StudyContextType {
   }) => void;
   answerQuestion: (questionIndex: number, choiceIndex: number) => void;
   toggleFlag: (questionIndex: number) => void;
-  submitExam: () => void;
+  submitExam: (actualTimeSpentSeconds?: number) => void;
   upgradeCurrentExam: (targetBook?: BookType) => void;
 
   // Study Fever Gauge & Character Growth
@@ -86,7 +88,7 @@ const DEFAULT_CHARACTER: CharacterState = {
     concentration: 10,
   },
   streakDays: 1,
-  lastStudyDate: new Date().toISOString().split('T')[0],
+  lastStudyDate: getLocalDateKey(),
   wisdomBerries: 3,
   studyFeverGauge: 25,
   feverModeActive: false,
@@ -102,10 +104,11 @@ const DEFAULT_STUDENT: StudentProfile = {
   activeGrade: '중2',
   activeSemester: '1학기',
   activeExamType: '중간고사',
-  textbookSettings: DEFAULT_TEXTBOOK_SETTINGS,
+  textbookSettings: getStandardTextbookSettings('중2', '1학기', '중간고사'),
   character: DEFAULT_CHARACTER,
   wrongNotes: [],
   examHistory: [],
+  dailyLogs: {},
   createdAt: new Date().toISOString(),
   lastLoginAt: new Date().toISOString(),
 };
@@ -197,6 +200,7 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       },
       wrongNotes: [],
       examHistory: [],
+      dailyLogs: {},
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
     };
@@ -250,24 +254,181 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  // Pure helper: apply EXP & level-up / stage evolution on CharacterState
+  const applyCharacterExp = (
+    prevChar: CharacterState,
+    gainedExp: number
+  ): {
+    nextChar: CharacterState;
+    leveledUp: boolean;
+    evolvedToStage: 1 | 2 | 3 | 4 | null;
+  } => {
+    const char: CharacterState = {
+      ...prevChar,
+      stats: { ...prevChar.stats },
+    };
+
+    let exp = char.exp + Math.max(0, gainedExp);
+    let level = char.level;
+    let maxExp = char.maxExp;
+    let stage = char.stage;
+    let evolvedToStage: 1 | 2 | 3 | 4 | null = null;
+
+    while (exp >= maxExp && level < 99) {
+      exp -= maxExp;
+      level += 1;
+      maxExp = level * 100;
+
+      const nextStage = getStageForLevel(level);
+      if (nextStage > stage) {
+        stage = nextStage;
+        evolvedToStage = nextStage;
+      }
+
+      char.stats.intelligence += 2;
+      char.stats.vocabulary += 2;
+      char.stats.inquiry += 2;
+      char.stats.concentration += 3;
+    }
+
+    return {
+      nextChar: {
+        ...char,
+        level,
+        exp,
+        maxExp,
+        stage,
+      },
+      leveledUp: level > prevChar.level,
+      evolvedToStage,
+    };
+  };
+
+  // Pure helper: merge daily study log for a local date
+  const mergeDailyStudyLog = (
+    student: StudentProfile,
+    dateKey: string,
+    beforeLevel: number,
+    beforeStage: 1 | 2 | 3 | 4,
+    afterLevel: number,
+    afterStage: 1 | 2 | 3 | 4,
+    updater: (prev: DailyStudyLog) => DailyStudyLog
+  ): Record<string, DailyStudyLog> => {
+    const existingLogs = student.dailyLogs || {};
+    const prevLog: DailyStudyLog = existingLogs[dateKey] || {
+      date: dateKey,
+      studySeconds: 0,
+      examsCompleted: 0,
+      questionsSolved: 0,
+      correctCount: 0,
+      expGained: 0,
+      startLevel: beforeLevel,
+      endLevel: afterLevel,
+      startStage: beforeStage,
+      endStage: afterStage,
+      wrongNotesMastered: 0,
+      berriesFed: 0,
+      bySubject: {},
+    };
+
+    const updated = updater(prevLog);
+    return {
+      ...existingLogs,
+      [dateKey]: {
+        ...updated,
+        startLevel: Math.min(prevLog.startLevel, beforeLevel),
+        endLevel: Math.max(prevLog.endLevel, afterLevel),
+        startStage: prevLog.startStage || beforeStage,
+        endStage: afterStage,
+      },
+    };
+  };
+
+  // Pure helper: update daily streak
+  const computeUpdatedStreak = (char: CharacterState, todayKey: string) => {
+    const lastKey = char.lastStudyDate ? getLocalDateKey(char.lastStudyDate) : '';
+    if (lastKey === todayKey) {
+      return { streakDays: Math.max(1, char.streakDays), lastStudyDate: todayKey };
+    }
+    const yesterdayKey = shiftDateKey(todayKey, -1);
+    if (lastKey === yesterdayKey) {
+      return { streakDays: char.streakDays + 1, lastStudyDate: todayKey };
+    }
+    return { streakDays: 1, lastStudyDate: todayKey };
+  };
+
+  const notifyLevelUpEffects = (leveledUp: boolean, evolvedToStage: 1 | 2 | 3 | 4 | null) => {
+    if (!leveledUp) return;
+    queueMicrotask(() => {
+      sounds.playFanfare();
+      confetti({
+        particleCount: 80,
+        spread: 80,
+        origin: { y: 0.6 },
+      });
+      if (evolvedToStage) {
+        const stageInfo = CHARACTER_STAGES.find((s) => s.stage === evolvedToStage);
+        if (stageInfo) {
+          setEvolutionNotice({
+            isOpen: true,
+            stage: evolvedToStage,
+            title: `${stageInfo.name}으로 진화 성공!`,
+            message: stageInfo.evolutionCelebration,
+          });
+        }
+      }
+    });
+  };
+
   // Study Fever Gauge Charge
   const chargeFeverGauge = (amount: number) => {
+    const todayKey = getLocalDateKey();
     updateCurrentStudent((student) => {
       const char = student.character;
       let newGauge = char.studyFeverGauge + amount;
       let feverActive = char.feverModeActive;
       let newBerries = char.wisdomBerries;
-      let newExp = char.exp;
+      let bonusExp = 0;
 
       if (newGauge >= 100) {
         newGauge = 100;
         if (!feverActive) {
           feverActive = true;
           newBerries += 1;
-          newExp += 50;
-          sounds.playFanfare();
-          confetti({ particleCount: 60, spread: 70 });
+          bonusExp = 50;
+          queueMicrotask(() => {
+            sounds.playFanfare();
+            confetti({ particleCount: 60, spread: 70 });
+          });
         }
+      }
+
+      if (bonusExp > 0) {
+        const beforeLv = char.level;
+        const beforeSt = char.stage;
+        const { nextChar, leveledUp, evolvedToStage } = applyCharacterExp(
+          {
+            ...char,
+            studyFeverGauge: newGauge,
+            feverModeActive: feverActive,
+            wisdomBerries: newBerries,
+          },
+          bonusExp
+        );
+        notifyLevelUpEffects(leveledUp, evolvedToStage);
+        return {
+          ...student,
+          character: nextChar,
+          dailyLogs: mergeDailyStudyLog(
+            student,
+            todayKey,
+            beforeLv,
+            beforeSt,
+            nextChar.level,
+            nextChar.stage,
+            (prev) => ({ ...prev, expGained: prev.expGained + bonusExp })
+          ),
+        };
       }
 
       return {
@@ -277,7 +438,6 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           studyFeverGauge: newGauge,
           feverModeActive: feverActive,
           wisdomBerries: newBerries,
-          exp: newExp,
         },
       };
     });
@@ -285,67 +445,31 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Level Up & Evolution Logic
   const triggerLevelUpCheck = (gainedExp: number) => {
+    const todayKey = getLocalDateKey();
     updateCurrentStudent((student) => {
-      let char = { ...student.character };
-      let exp = char.exp + gainedExp;
-      let level = char.level;
-      let maxExp = char.maxExp;
-      let stage = char.stage;
-      let evolved = false;
-
-      while (exp >= maxExp && level < 99) {
-        exp -= maxExp;
-        level += 1;
-        maxExp = level * 100;
-
-        // Stage Evolution check
-        let nextStage: 1 | 2 | 3 | 4 = 1;
-        if (level >= 25) nextStage = 4;
-        else if (level >= 12) nextStage = 3;
-        else if (level >= 5) nextStage = 2;
-
-        if (nextStage > stage) {
-          stage = nextStage;
-          evolved = true;
-        }
-
-        // Stat boosts on level up
-        char.stats.intelligence += 2;
-        char.stats.vocabulary += 2;
-        char.stats.inquiry += 2;
-        char.stats.concentration += 3;
-      }
-
-      if (level > char.level) {
-        sounds.playFanfare();
-        confetti({
-          particleCount: 80,
-          spread: 80,
-          origin: { y: 0.6 },
-        });
-
-        if (evolved) {
-          const stageInfo = CHARACTER_STAGES.find((s) => s.stage === stage);
-          if (stageInfo) {
-            setEvolutionNotice({
-              isOpen: true,
-              stage: stage,
-              title: `${stageInfo.name}으로 진화 성공!`,
-              message: stageInfo.evolutionCelebration,
-            });
-          }
-        }
-      }
+      const beforeLv = student.character.level;
+      const beforeSt = student.character.stage;
+      const { nextChar, leveledUp, evolvedToStage } = applyCharacterExp(student.character, gainedExp);
+      notifyLevelUpEffects(leveledUp, evolvedToStage);
 
       return {
         ...student,
-        character: {
-          ...char,
-          level,
-          exp,
-          maxExp,
-          stage,
-        },
+        character: nextChar,
+        dailyLogs:
+          gainedExp > 0
+            ? mergeDailyStudyLog(
+                student,
+                todayKey,
+                beforeLv,
+                beforeSt,
+                nextChar.level,
+                nextChar.stage,
+                (prev) => ({
+                  ...prev,
+                  expGained: prev.expGained + gainedExp,
+                })
+              )
+            : student.dailyLogs,
       };
     });
   };
@@ -356,21 +480,42 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return { success: false, message: '지혜의 열매가 부족해요! 모의고사와 오답노트를 풀어 열매를 획득해 보세요.' };
     }
 
+    const todayKey = getLocalDateKey();
     updateCurrentStudent((student) => {
       const char = student.character;
+      const beforeLv = char.level;
+      const beforeSt = char.stage;
+
+      const updatedBaseChar: CharacterState = {
+        ...char,
+        wisdomBerries: Math.max(0, char.wisdomBerries - 1),
+        studyFeverGauge: Math.min(100, char.studyFeverGauge + 15),
+        stats: {
+          ...char.stats,
+          intelligence: char.stats.intelligence + 1,
+          concentration: char.stats.concentration + 1,
+        },
+      };
+
+      const { nextChar, leveledUp, evolvedToStage } = applyCharacterExp(updatedBaseChar, 35);
+      notifyLevelUpEffects(leveledUp, evolvedToStage);
+
       return {
         ...student,
-        character: {
-          ...char,
-          wisdomBerries: char.wisdomBerries - 1,
-          exp: char.exp + 35,
-          studyFeverGauge: Math.min(100, char.studyFeverGauge + 15),
-          stats: {
-            ...char.stats,
-            intelligence: char.stats.intelligence + 1,
-            concentration: char.stats.concentration + 1,
-          },
-        },
+        character: nextChar,
+        dailyLogs: mergeDailyStudyLog(
+          student,
+          todayKey,
+          beforeLv,
+          beforeSt,
+          nextChar.level,
+          nextChar.stage,
+          (prev) => ({
+            ...prev,
+            expGained: prev.expGained + 35,
+            berriesFed: (prev.berriesFed || 0) + 1,
+          })
+        ),
       };
     });
 
@@ -390,7 +535,17 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     selectedUnits?: string[];
     scopeDescription?: string;
     upgradeRound?: number;
+    examRound?: number;
+    excludeQuestionKeys?: string[];
   }) => {
+    // 이전 회차 이력 분석 (과목별 회차 자동 산출 및 이전 풀이 문제 제외)
+    const pastSessionsForSubject = (currentStudent.examHistory || []).filter(
+      (s) => s.subject === params.subject
+    );
+    const calculatedRound = params.examRound || (pastSessionsForSubject.length + 1);
+    const pastQuestionKeys = params.excludeQuestionKeys ||
+      (currentStudent.examHistory || []).flatMap((s) => s.questions.map((q) => q.title || q.questionText));
+
     const questions = getFilteredQuestions({
       grade: params.grade,
       semester: params.semester,
@@ -401,6 +556,8 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       selectedUnits: params.selectedUnits,
       timerMinutes: params.timerMinutes,
       upgradeRound: params.upgradeRound || 1,
+      examRound: calculatedRound,
+      excludeQuestionKeys: pastQuestionKeys,
     });
 
     const publisherLabel = params.publisher && params.publisher !== '공통/표준'
@@ -416,9 +573,11 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         ? '[45분 본시험 20문항]'
         : '[30분 모의평가 15문항]';
 
+    const roundTag = `[${calculatedRound}회차]`;
+
     const session: ExamSession = {
       id: `exam-${Date.now()}`,
-      title: `${params.grade} ${params.semester} ${params.examType} [${params.subject}] ${modeTag} ${publisherLabel}${
+      title: `${roundTag} ${params.grade} ${params.semester} ${params.examType} [${params.subject}] ${modeTag} ${publisherLabel}${
         params.bookType === 'blacklabel'
           ? '블랙라벨 심화'
           : params.bookType === '100bal100jung'
@@ -481,16 +640,21 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // Submit Exam
-  const submitExam = () => {
+  const submitExam = (actualTimeSpentSeconds?: number) => {
     if (!currentExam) return;
 
     let correctCount = 0;
     const newWrongNotes: WrongNoteItem[] = [];
+    let earnedPoints = 0;
+    let totalPoints = 0;
 
     currentExam.questions.forEach((q, idx) => {
+      const weight = q.scoreWeight || 5;
+      totalPoints += weight;
       const selected = currentExam.answers[idx];
       if (selected === q.correctAnswerIndex) {
         correctCount += 1;
+        earnedPoints += weight;
       } else {
         newWrongNotes.push({
           id: `wrong-${Date.now()}-${idx}`,
@@ -509,15 +673,22 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     });
 
-    const score = Math.round((correctCount / currentExam.questions.length) * 100);
+    const totalQuestions = currentExam.questions.length;
+    const score =
+      totalPoints > 0
+        ? Math.round((earnedPoints / totalPoints) * 100)
+        : Math.round((correctCount / Math.max(1, totalQuestions)) * 100);
 
-    const completedSession: ExamSession = {
-      ...currentExam,
-      score,
-      completedAt: new Date().toISOString(),
-    };
-
-    setCurrentExam(completedSession);
+    const maxExamSeconds = (currentExam.timerMinutes || 30) * 60;
+    const fallbackElapsedSeconds = Math.min(
+      maxExamSeconds,
+      Math.max(1, Math.round((Date.now() - new Date(currentExam.startedAt).getTime()) / 1000))
+    );
+    const timeSpentSeconds =
+      typeof actualTimeSpentSeconds === 'number' && actualTimeSpentSeconds > 0
+        ? Math.min(maxExamSeconds, Math.round(actualTimeSpentSeconds))
+        : fallbackElapsedSeconds;
+    const addedMinutes = Math.max(1, Math.round(timeSpentSeconds / 60));
 
     // Calculate EXP & stats
     const baseExp = score * 1.5;
@@ -534,50 +705,113 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         ? 'vocabulary'
         : 'concentration';
 
-    updateCurrentStudent((student) => {
-      const updatedHistory = [completedSession, ...student.examHistory];
-      const mergedWrongNotes = [...newWrongNotes, ...student.wrongNotes];
+    const completedAtIso = new Date().toISOString();
+    const todayKey = getLocalDateKey(completedAtIso);
 
-      // Check badges
-      const updatedBadges = [...student.character.badges];
+    // Preview expected before/after level for currentExam UI display
+    const previewExpResult = applyCharacterExp(currentStudent.character, totalExp);
+    const completedSession: ExamSession = {
+      ...currentExam,
+      score,
+      correctCount,
+      timeSpentSeconds,
+      characterLevelBefore: currentStudent.character.level,
+      characterLevelAfter: previewExpResult.nextChar.level,
+      completedAt: completedAtIso,
+    };
+
+    setCurrentExam(completedSession);
+
+    updateCurrentStudent((student) => {
+      const beforeLv = student.character.level;
+      const beforeSt = student.character.stage;
+      const updatedBadges = student.character.badges.map((b) => ({ ...b }));
+
       const firstExamBadge = updatedBadges.find((b) => b.id === 'first_exam');
       if (firstExamBadge && !firstExamBadge.unlockedAt) {
-        firstExamBadge.unlockedAt = new Date().toISOString();
+        firstExamBadge.unlockedAt = completedAtIso;
       }
-
       if (score >= 90 && currentExam.subject === '수학') {
         const mathBadge = updatedBadges.find((b) => b.id === 'math_ace');
         if (mathBadge && !mathBadge.unlockedAt) {
-          mathBadge.unlockedAt = new Date().toISOString();
+          mathBadge.unlockedAt = completedAtIso;
         }
       }
-
       if (currentExam.bookType === 'blacklabel' && score >= 80) {
         const blBadge = updatedBadges.find((b) => b.id === 'blacklabel_slayer');
         if (blBadge && !blBadge.unlockedAt) {
-          blBadge.unlockedAt = new Date().toISOString();
+          blBadge.unlockedAt = completedAtIso;
         }
       }
+
+      const streakInfo = computeUpdatedStreak(student.character, todayKey);
+      const baseUpdatedChar: CharacterState = {
+        ...student.character,
+        badges: updatedBadges,
+        streakDays: streakInfo.streakDays,
+        lastStudyDate: streakInfo.lastStudyDate,
+        totalStudyMinutes: student.character.totalStudyMinutes + addedMinutes,
+        studyFeverGauge: Math.min(100, student.character.studyFeverGauge + 25),
+        stats: {
+          ...student.character.stats,
+          [subjectStatKey]: student.character.stats[subjectStatKey] + Math.ceil(score / 20),
+          concentration: student.character.stats.concentration + 3,
+        },
+      };
+
+      const { nextChar, leveledUp, evolvedToStage } = applyCharacterExp(baseUpdatedChar, totalExp);
+      notifyLevelUpEffects(leveledUp, evolvedToStage);
+
+      const sessionWithExactLevels: ExamSession = {
+        ...completedSession,
+        characterLevelBefore: beforeLv,
+        characterLevelAfter: nextChar.level,
+      };
+
+      const updatedHistory = [sessionWithExactLevels, ...student.examHistory];
+      const mergedWrongNotes = [...newWrongNotes, ...student.wrongNotes];
 
       return {
         ...student,
         examHistory: updatedHistory,
         wrongNotes: mergedWrongNotes,
-        character: {
-          ...student.character,
-          badges: updatedBadges,
-          totalStudyMinutes: student.character.totalStudyMinutes + currentExam.timerMinutes,
-          studyFeverGauge: Math.min(100, student.character.studyFeverGauge + 25),
-          stats: {
-            ...student.character.stats,
-            [subjectStatKey]: student.character.stats[subjectStatKey] + Math.ceil(score / 20),
-            concentration: student.character.stats.concentration + 3,
-          },
-        },
+        character: nextChar,
+        dailyLogs: mergeDailyStudyLog(
+          student,
+          todayKey,
+          beforeLv,
+          beforeSt,
+          nextChar.level,
+          nextChar.stage,
+          (prev) => {
+            const prevSub = prev.bySubject?.[currentExam.subject] || {
+              studySeconds: 0,
+              examsCompleted: 0,
+              questionsSolved: 0,
+              correctCount: 0,
+            };
+            return {
+              ...prev,
+              studySeconds: prev.studySeconds + timeSpentSeconds,
+              examsCompleted: prev.examsCompleted + 1,
+              questionsSolved: prev.questionsSolved + totalQuestions,
+              correctCount: prev.correctCount + correctCount,
+              expGained: prev.expGained + totalExp,
+              bySubject: {
+                ...(prev.bySubject || {}),
+                [currentExam.subject]: {
+                  studySeconds: prevSub.studySeconds + timeSpentSeconds,
+                  examsCompleted: prevSub.examsCompleted + 1,
+                  questionsSolved: prevSub.questionsSolved + totalQuestions,
+                  correctCount: prevSub.correctCount + correctCount,
+                },
+              },
+            };
+          }
+        ),
       };
     });
 
-    triggerLevelUpCheck(totalExp);
     setActiveTab('exam_result');
     sounds.playFanfare();
   };
@@ -596,6 +830,10 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       answers: {},
       flagged: {},
       score: undefined,
+      correctCount: undefined,
+      timeSpentSeconds: undefined,
+      characterLevelBefore: undefined,
+      characterLevelAfter: undefined,
       completedAt: undefined,
       startedAt: new Date().toISOString(),
       questions: upgraded,
@@ -610,13 +848,18 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Wrong Note Management
   const toggleMasterNote = (noteId: string) => {
+    const todayKey = getLocalDateKey();
     updateCurrentStudent((student) => {
+      let gainedExp = 0;
+      let masteredDelta = 0;
+
       const updatedNotes = student.wrongNotes.map((n) => {
         if (n.id === noteId) {
           const nextMastered = !n.isMastered;
           if (nextMastered) {
-            triggerLevelUpCheck(30);
-            sounds.playSuccess();
+            gainedExp = 30;
+            masteredDelta = 1;
+            queueMicrotask(() => sounds.playSuccess());
           }
           return {
             ...n,
@@ -626,6 +869,32 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
         return n;
       });
+
+      if (gainedExp > 0) {
+        const beforeLv = student.character.level;
+        const beforeSt = student.character.stage;
+        const { nextChar, leveledUp, evolvedToStage } = applyCharacterExp(student.character, gainedExp);
+        notifyLevelUpEffects(leveledUp, evolvedToStage);
+        return {
+          ...student,
+          wrongNotes: updatedNotes,
+          character: nextChar,
+          dailyLogs: mergeDailyStudyLog(
+            student,
+            todayKey,
+            beforeLv,
+            beforeSt,
+            nextChar.level,
+            nextChar.stage,
+            (prev) => ({
+              ...prev,
+              expGained: prev.expGained + gainedExp,
+              wrongNotesMastered: (prev.wrongNotesMastered || 0) + masteredDelta,
+            })
+          ),
+        };
+      }
+
       return {
         ...student,
         wrongNotes: updatedNotes,
@@ -673,11 +942,12 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       const data = await res.json();
       if (data.success && data.questions) {
+        const sanitizedQuestions = data.questions.map((q: any) => ensure4Options(q));
         updateCurrentStudent((student) => ({
           ...student,
           wrongNotes: student.wrongNotes.map((n) =>
             n.id === noteId
-              ? { ...n, similarQuestions: [...(n.similarQuestions || []), ...data.questions] }
+              ? { ...n, similarQuestions: [...(n.similarQuestions || []), ...sanitizedQuestions] }
               : n
           ),
         }));
@@ -703,22 +973,56 @@ export const StudyProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const isCorrect = selectedAnswerIndex === targetQ.correctAnswerIndex;
     const expGained = isCorrect ? 40 : 10;
+    const todayKey = getLocalDateKey();
 
     if (isCorrect) {
-      triggerLevelUpCheck(expGained);
-      chargeFeverGauge(15);
       sounds.playSuccess();
       confetti({ particleCount: 45, spread: 60 });
-      // Also mark the parent note as reviewed and possibly mastered!
-      updateCurrentStudent((student) => ({
-        ...student,
-        wrongNotes: student.wrongNotes.map((n) =>
-          n.id === noteId ? { ...n, isMastered: true, reviewCount: n.reviewCount + 1 } : n
-        ),
-      }));
     } else {
       sounds.playWarning();
     }
+
+    updateCurrentStudent((student) => {
+      const beforeLv = student.character.level;
+      const beforeSt = student.character.stage;
+      const wasMastered = Boolean(student.wrongNotes.find((n) => n.id === noteId)?.isMastered);
+      const { nextChar, leveledUp, evolvedToStage } = applyCharacterExp(
+        {
+          ...student.character,
+          studyFeverGauge: isCorrect
+            ? Math.min(100, student.character.studyFeverGauge + 15)
+            : student.character.studyFeverGauge,
+        },
+        expGained
+      );
+      notifyLevelUpEffects(leveledUp, evolvedToStage);
+
+      return {
+        ...student,
+        character: nextChar,
+        wrongNotes: isCorrect
+          ? student.wrongNotes.map((n) =>
+              n.id === noteId ? { ...n, isMastered: true, reviewCount: n.reviewCount + 1 } : n
+            )
+          : student.wrongNotes.map((n) =>
+              n.id === noteId ? { ...n, reviewCount: n.reviewCount + 1 } : n
+            ),
+        dailyLogs: mergeDailyStudyLog(
+          student,
+          todayKey,
+          beforeLv,
+          beforeSt,
+          nextChar.level,
+          nextChar.stage,
+          (prev) => ({
+            ...prev,
+            expGained: prev.expGained + expGained,
+            wrongNotesMastered:
+              (prev.wrongNotesMastered || 0) + (isCorrect && !wasMastered ? 1 : 0),
+          })
+        ),
+      };
+    });
 
     return { isCorrect, expGained };
   };

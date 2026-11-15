@@ -91,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenProfileModal, onOpenTextbo
             }`}
           >
             <BarChart2 className="w-4 h-4" />
-            <span>학습 분석</span>
+            <span>일간 리포트</span>
           </button>
         </nav>
 
@@ -196,7 +196,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenProfileModal, onOpenTextbo
           }`}
         >
           <BarChart2 className="w-3.5 h-3.5" />
-          <span>통계</span>
+          <span>리포트</span>
         </button>
       </div>
     </header>
